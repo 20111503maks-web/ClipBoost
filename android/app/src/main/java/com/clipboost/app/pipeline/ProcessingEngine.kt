@@ -79,12 +79,25 @@ class ProcessingEngine(private val context: Context) {
         val videoEffects = buildList<Effect> {
             if (plan.denoise != Level.OFF) add(DenoiseEffect(plan.denoise.denoiseRangeSigma))
             if (plan.sharpen != Level.OFF) add(SharpenEffect(plan.sharpen.sharpenAmount))
-            // Short-side scaling keeps the aspect ratio exactly and is independent of the rotation tag.
-            plan.targetShortSide?.let { add(Presentation.createForShortSide(it)) }
+            plan.targetShortSide?.let { add(resizeTo(job.info, it)) }
         }
         return EditedMediaItem.Builder(MediaItem.fromUri(job.sourceUri))
             .setEffects(Effects(/* audioProcessors= */ emptyList(), videoEffects))
             .build()
+    }
+
+    /**
+     * Scales so the short side becomes [shortSide], keeping the aspect ratio. Media3 applies the
+     * rotation tag before effects run, so the display (post-rotation) size is the right reference.
+     */
+    private fun resizeTo(info: VideoInfo, shortSide: Int): Presentation {
+        val scale = shortSide.toFloat() / info.shortSide
+        fun even(v: Float) = ((v / 2f).roundToInt() * 2).coerceAtLeast(2) // encoders want even sizes
+        return Presentation.createForWidthAndHeight(
+            even(info.displayWidth * scale),
+            even(info.displayHeight * scale),
+            Presentation.LAYOUT_SCALE_TO_FIT,
+        )
     }
 
     private fun buildTransformer(job: Job, done: CompletableDeferred<EngineResult>): Transformer {
